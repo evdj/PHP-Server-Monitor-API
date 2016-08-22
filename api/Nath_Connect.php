@@ -37,9 +37,11 @@ class DB_Connect {
     public function connect() {
         require_once ('../config.php');
         // connecting to mysql
-        $con = mysql_connect(PSM_DB_HOST, PSM_DB_USER, PSM_DB_PASS);
+        $con = pg_connect(sprintf("host=%s dbname=%s user=%s password=%s",PSM_DB_HOST, PSM_DB_NAME, PSM_DB_USER, PSM_DB_PASS)) or die('Could not connect: ' . pg_last_error());
+
+        #$con = mysql_connect(PSM_DB_HOST, PSM_DB_USER, PSM_DB_PASS);
         // selecting database
-        mysql_select_db(PSM_DB_NAME);
+        #mysql_select_db(PSM_DB_NAME);
         // return database handler
         return $con;
     }

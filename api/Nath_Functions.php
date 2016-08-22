@@ -42,8 +42,8 @@ class DB_Functions {
         require_once '../config.php';
         require_once 'Nath_Connect.php';
         // connecting to database
-        $this->db = new DB_Connect();
-        $this->db->connect();
+        $this->con = new DB_Connect();
+        $this->db = $this->con->connect();
     }
     // destructor
     function __destruct() {
@@ -77,14 +77,13 @@ public function getServerlistbyUserID($user_id) {
     $servers = 'servers';
     $users_servers = 'users_servers';
 
-    $r = mysql_query("SELECT a.server_id, a.ip, a.port, a.label, a.type, a.status, a.last_online, a.last_check, a.active,a.email, a.pushover, a.warning_threshold, a.warning_threshold_counter, b.server_id, b.user_id FROM $dbprefix$servers a, $dbprefix$users_servers b WHERE b.user_id='$user_id' AND a.server_id=b.server_id");
+    $r = pg_query("SELECT a.server_id, a.ip, a.port, a.label, a.type, a.status, a.last_online, a.last_check, a.active,a.email, a.pushover, a.warning_threshold, a.warning_threshold_counter, b.server_id, b.user_id FROM $dbprefix$servers a, $dbprefix$users_servers b WHERE b.user_id='$user_id' AND a.server_id=b.server_id");
     // check for result
-    $no_of_rows = mysql_num_rows($r);
-    if ($no_of_rows > 0) {
-        $result = array();
-        while ($row = mysql_fetch_assoc($r)) {
-            $result[] = $row;
-        }
+    $result = [];
+    while ($result[] = pg_fetch_assoc($r)) {
+        // do nope
+    }
+    if (count($result)) {
         return $result;
     } else {
         // Servers not found
@@ -102,16 +101,15 @@ public function getMonitorStatusByUserID($user_id) {
     $servers = 'servers';
     $users_servers = 'users_servers';
 
-    $r = mysql_query("SELECT COUNT(a.server_id) as servercount, count(if(a.status = 'on', a.status, NULL))
- as statusoncount, count(if(a.status = 'off', a.status, NULL))
- as statusoffcount, count(if(a.active = 'no', a.active, NULL))
- as activecount, count(if(a.email = 'yes', a.email, NULL))
- as emailalertcount, b.server_id, b.user_id FROM $dbprefix$servers a, $dbprefix$users_servers b WHERE b.user_id='$user_id' AND a.server_id=b.server_id");
+    $result = pg_query("SELECT COUNT(a.server_id) as servercount, 
+                               sum( (case when a.status = 'on' then 1 else 0 end) ) as statusoncount,
+                               sum( (case when a.status = 'off' then 1 else 0 end) ) as statusoffcount,
+                               sum( (case when a.active = 'no' then 1 else 0 end) ) as activecount,
+                               sum( (case when a.email = 'yes' then 1 else 0 end) ) as emailalertcount
+                          FROM $dbprefix$servers a, $dbprefix$users_servers b WHERE b.user_id='$user_id' AND a.server_id=b.server_id
+                       ");
     // check for result
-    $no_of_rows = mysql_num_rows($r);
-    if ($no_of_rows > 0) {
-        // Status found
-        $result = mysql_fetch_array($r);
+    if ($result = pg_fetch_array($result)) {
         return $result;
     } else {
         // Status not found
@@ -129,18 +127,22 @@ public function getServerUptime($server_id, $HoursUnit) {
     $dbprefix = $this->db =PSM_DB_PREFIX;
     $servers_uptime = 'servers_uptime';
     if($HoursUnit <= 1){
-        $r = mysql_query("SELECT servers_uptime_id, server_id, date, status, latency FROM $dbprefix$servers_uptime WHERE date >=(NOW() - INTERVAL '$HoursUnit' HOUR) AND (server_id='$server_id')");
+        $r = pg_query("SELECT servers_uptime_id, server_id, date, status, latency FROM $dbprefix$servers_uptime WHERE date >=(NOW() - INTERVAL '$HoursUnit' HOUR) AND (server_id='$server_id')");
     }else{
-        $r = mysql_query("SELECT servers_uptime_id, server_id, date, status, AVG(latency) as latency FROM $dbprefix$servers_uptime WHERE date >=(NOW() - INTERVAL '$HoursUnit' HOUR) AND (server_id='$server_id') GROUP BY DATE(date), HOUR(date)");
+        $r = pg_query("SELECT
+                             servers_uptime_id, server_id, date, status, AVG(latency) as latency
+                        FROM $dbprefix$servers_uptime
+                       WHERE date >=(NOW() - INTERVAL '$HoursUnit' HOUR) AND (server_id='$server_id')
+                       GROUP BY DATE(date), extract('hour' from date)
+                       , servers_uptime_id, server_id, status
+                      ");
     }
 
-    // check for result
-    $no_of_rows = mysql_num_rows($r);
-    if ($no_of_rows > 0) {
-        $result = array();
-        while ($row = mysql_fetch_assoc($r)) {
-            $result[] = $row;
-        }
+    $result = [];
+    while ($result[] = pg_fetch_assoc($r)) {
+        // do nope
+    }
+    if (count($result)) {
         return $result;
     } else {
         // Uptime records not found
@@ -312,12 +314,11 @@ public function isServerIDExisted($server_id) {
  * @return boolean
  */
 public function loginWithPostData($email, $app_password) {
-    $dbprefix = $this->db =PSM_DB_PREFIX;
+    #$dbprefix = $this->db =PSM_DB_PREFIX;
+    $dbprefix = PSM_DB_PREFIX;
     $users = 'users';
-    $result = mysql_query("SELECT * from $dbprefix$users WHERE email = '$email'");
-    $no_of_rows = mysql_num_rows($result);
-    if ($no_of_rows > 0) {
-        $result = mysql_fetch_array($result);
+    $result = pg_query($this->db, "SELECT * from $dbprefix$users WHERE email = '$email'");
+    if ($result = pg_fetch_array($result)) {
         $hash_password = $result['password'];
             if(password_verify($app_password, $hash_password)) {
                 return $result;
@@ -328,7 +329,7 @@ public function loginWithPostData($email, $app_password) {
         // user not Found
         return false;
     }
-    }
+}
 
 /**
  * Update iPhone Device Token and phone type in the Database
@@ -340,8 +341,8 @@ public function loginWithPostData($email, $app_password) {
 public function iphoneDeviceToken($email, $devicetoken, $phone_type) {
         $dbprefix = $this->db =PSM_DB_PREFIX;
         $users = 'users';
-        $result = mysql_query("UPDATE $dbprefix$users SET pushover_device = '$phone_type', pushover_key = '$devicetoken'
-                          WHERE email = '$email'");
+        #$result = mysql_query("UPDATE $dbprefix$users SET pushover_device = '$phone_type', pushover_key = '$devicetoken' WHERE email = '$email'");
+        $result = pg_query("UPDATE $dbprefix$users SET pushover_device = '$phone_type', pushover_key = '$devicetoken' WHERE email = '$email'");
         if ($result) {
             return true;
         }else{
